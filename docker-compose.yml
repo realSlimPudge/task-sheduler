@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: task_scheduler_db
+    environment:
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: 123123
+      POSTGRES_DB: task_scheduler
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduler -d task_scheduler"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  migrator:
+    image: migrate/migrate
+    container_name: task_scheduler_migrator
+    volumes:
+      - ./migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=postgres://scheduler:123123@postgres:5432/task_scheduler?sslmode=disable
+      - up
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    container_name: task_scheduler_app
+    ports:
+      - "8080:8080"
+    environment:
+      APP_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: scheduler
+      DB_PASSWORD: 123123
+      DB_NAME: task_scheduler
+      DB_SSLMODE: disable
+      WORKER_COUNT: 5
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+volumes:
+  pgdata:
